@@ -78,7 +78,7 @@ sudo mkfs.ext4 /dev/data-vg0/data-lv0
 
 # mount
 sudo mkdir -p /mnt/data
-sudo echo "/dev/data-vg0/data-lv0 /mnt/data ext4 defaults 0 0" >> /etc/fstab
+sudo bash -c 'echo "/dev/data-vg0/data-lv0 /mnt/data ext4 defaults 0 0" >> /etc/fstab'
 sudo mount /mnt/data
 ```
 
