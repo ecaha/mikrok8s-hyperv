@@ -42,6 +42,42 @@ When we are armed by tools we can setup the microk8s node. I will provide detail
 10. Upload windows ISO
 11. Create and run machine
 
-# Install Ubuntu 22.04
-Nothing special here, I am using netboot.xyz and iKVM on BMC to do that. Everything is set to defalut, nvme partitioned by default. Four SATA drives are in separate VG and stripped LV is created.
+## Install Ubuntu 22.04
+Nothing special here, I am using netboot.xyz and iKVM on BMC to do that. Everything is set to defalut, nvme partitioned by default. For PoC OpenSSH server is installed and password authentication enabled. Single NIC is DHCPv4 enabled, we will configure the bridge later.
 
+Four SATA drives are in separate VG and stripped LV is created.
+```bash
+# SSH to server
+
+# list blk devices to check SATA drives connection
+sudo lsblk
+
+# remove LVM
+sudo lvdisplay
+sudo lvremove /dev/data-vg0/data-lv0
+sudo vgremove data-vg0
+sudo pvremove /dev/sda /dev/sdb /dev/sdc /dev/sdd
+
+#clean drives with sfdisk
+sudo sfdisk --delete /dev/sda
+sudo sfdisk --delete /dev/sdb
+sudo sfdisk --delete /dev/sdc
+sudo sfdisk --delete /dev/sdd
+```
+
+Create new lvm for data
+
+```bash
+# LVM
+sudo pvcreate /dev/sda /dev/sdb /dev/sdc /dev/sdd
+sudo vgcreate data-vg0 /dev/sda /dev/sdb /dev/sdc /dev/sdd
+sudo lvcreate -l 100%FREE -n data-lv0 data-vg0
+
+# mkfs
+sudo mkfs.ext4 /dev/data-vg0/data-lv0
+
+# mount
+sudo mkdir -p /mnt/data
+sudo echo "/dev/data-vg0/data-lv0 /mnt/data ext4 defaults 0 0" >> /etc/fstab
+sudo mount /mnt/data
+```
