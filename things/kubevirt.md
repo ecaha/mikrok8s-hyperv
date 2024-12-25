@@ -43,7 +43,7 @@ When we are armed by tools we can setup the microk8s node. I will provide detail
 11. Create and run machine
 
 ## Install Ubuntu 22.04
-Nothing special here, I am using netboot.xyz and iKVM on BMC to do that. Everything is set to defalut, nvme partitioned by default. For PoC OpenSSH server is installed and password authentication enabled. Single NIC is DHCPv4 enabled, we will configure the bridge later.
+Nothing special here, I am using netboot.xyz and iKVM on BMC to do that. Everything is set to defalut, nvme partitioned by default. For PoC OpenSSH server is installed and password authentication enabled. Single NIC is DHCPv4 enabled, we will configure the bridge later. When the installation is done, restert server and SSH to it. 
 
 Four SATA drives are in separate VG and stripped LV is created.
 ```bash
@@ -81,3 +81,30 @@ sudo mkdir -p /mnt/data
 sudo echo "/dev/data-vg0/data-lv0 /mnt/data ext4 defaults 0 0" >> /etc/fstab
 sudo mount /mnt/data
 ```
+
+## Netwroking setup
+Ubuntu is using netplan to configure networking. Easiest way how to change direct connection to bridge is just add another file into _/etc/netplan/_ directory.
+Before that we need to know the connected DHCPv4 provided interface we will use in the bridge scenario. Also the static address for our bridge interface is needed.
+
+```bash
+# check the interface name
+sudo cat /etc/netplan/50-cloud-init.yaml #in the ethernets section, the name of iface with dhcp4: true
+# XOR
+sudo ip ad #iface name with ipaddress
+
+sudo bash -c 'cat << EOF > /etc/netplan/60-bridge.yaml
+network:
+  version: 2
+  renderer: networkd
+  bridge:
+    br0:
+      addresses:
+        - 192.168.174.41/24
+      gateway4: 192.168.174.1
+      nameservers:
+        addresses: [192.168.174.1, 8.8.8.8]
+      interfaces:
+        - eno2
+      
+EOF'
+
