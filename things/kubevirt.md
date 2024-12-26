@@ -96,7 +96,7 @@ sudo bash -c 'cat << EOF > /etc/netplan/60-bridge.yaml
 network:
   version: 2
   renderer: networkd
-  bridge:
+  bridges:
     br0:
       addresses:
         - 192.168.174.41/24
@@ -104,7 +104,35 @@ network:
       nameservers:
         addresses: [192.168.174.1, 8.8.8.8]
       interfaces:
-        - eno2
-      
+        - eno2     
 EOF'
+
+sudo chmod 600 /etc/netplan/60-bridge.yaml
+
+sudo netplan apply
+```
+Restablish connection to chosen IP address
+
+## Install microk8s
+Straithforward procedure nothing special here
+
+```bash
+sudo snap install microk8s --classic
+
+# wait until it starts
+sudo microk8s status
+
+# stop microk8s
+sudo microk8s stop
+
+#remove symlink
+sudo rm /var/lib/kubelet
+sudo mkdir -p /var/lib/kubelet
+sudo bash -c 'echo "/var/snap/microk8s/common/var/lib/kubelet /var/lib/kubelet none bind 0 0" >> /etc/fstab'
+sudo mount /var/lib/kubelet
+
+#start microk8s
+sudo microk8s start
+```
+
 
