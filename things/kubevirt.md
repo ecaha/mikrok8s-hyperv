@@ -35,12 +35,12 @@ When we are armed by tools we can setup the microk8s node. I will provide detail
 3. Install microk8s
 4. Replace symbolic link in _/var/lib/kubelet_ by mount -o bind (in fstab as well)
 5. Enable add-ons - hostpath and multus
-6. Install kubevirt
-7. Spin empheral VM - test kubevirt
-8. Create custom storage class, set it default
-9. Install CDI
-10. Upload windows ISO
-11. Create and run machine
+6. Set environment, create custom storage class, set it default
+7. Install kubevirt
+8. Spin empheral VM - test kubevirt
+10. Install CDI
+11. Upload windows ISO
+12. Create and run machine
 
 ## Install Ubuntu 22.04
 Nothing special here, I am using netboot.xyz and iKVM on BMC to do that. Everything is set to defalut, nvme partitioned by default. For PoC OpenSSH server is installed and password authentication enabled. Single NIC is DHCPv4 enabled, we will configure the bridge later. When the installation is done, restert server and SSH to it. 
@@ -140,10 +140,11 @@ Execute on remote SSH session.
 ```bash
 sudo microk8s enable community
 sudo microk8s enable multus
-sudo microk8s enable hostpath
+sudo microk8s enable hostpath-storage
+sudo microk8s enable metrics-server
 ```
 
-## Kubevirt installation
+## Set environment
 We need to prepare our kubernetes management environment. So we get kubeconfig from the server and we will store it locally.
 On the remote host execute
 ```bash
@@ -156,9 +157,10 @@ notepad $home/.kube/mycluster
 ```
 Copy and paste config from terminal to the file and then set envrionemnt variable and test connectivity
 ```Powershell
-$env:KUBE_CONFIG = "$home/.kube/mycluster"
+$env:KUBECONFIG = "$home/.kube/mycluster"
 kubectl get pod -A
 ```
+If it works, you can impor kubeconfig into Headlamps for easy cluster observation.
 
 
 
