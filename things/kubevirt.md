@@ -34,7 +34,7 @@ When we are armed by tools we can setup the microk8s node. I will provide detail
 2. Set bridge networking, _set the static IP_
 3. Install microk8s
 4. Replace symbolic link in _/var/lib/kubelet_ by mount -o bind (in fstab as well)
-5. Enable add-ons - hostpath and multus
+5. Enable add-ons - hostpath-storage, metrics-server and multus
 6. Set environment, create custom storage class, set it default
 7. Install kubevirt
 8. Spin empheral VM - test kubevirt
@@ -162,5 +162,11 @@ kubectl get pod -A
 ```
 If it works, you can impor kubeconfig into Headlamps for easy cluster observation.
 
+## Custom default storage class
+The hostpath storage does not play well along with kubevirt. Easiest way how to overcome the issues is to create custom storage class and make it  default. \we will use /mnt/data location for that.
 
+```Powershell
+$storClass = @"
+
+```
 
