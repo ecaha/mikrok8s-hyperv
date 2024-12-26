@@ -114,7 +114,7 @@ sudo netplan apply
 Restablish connection to chosen IP address
 
 ## Install microk8s
-Straithforward procedure nothing special here
+Straithforward procedure nothing special here. Execute in SSH session on the server.
 
 ```bash
 sudo snap install microk8s --classic
@@ -134,5 +134,31 @@ sudo mount /var/lib/kubelet
 #start microk8s
 sudo microk8s start
 ```
+
+## Enable Addons
+Execute on remote SSH session.
+```bash
+sudo microk8s enable community
+sudo microk8s enable multus
+sudo microk8s enable hostpath
+```
+
+## Kubevirt installation
+We need to prepare our kubernetes management environment. So we get kubeconfig from the server and we will store it locally.
+On the remote host execute
+```bash
+sudo microk8s config
+```
+On local widnows machine execute in PowerShell, preferably >7
+```Powershell
+New-Item -ItemType Directory -Force -Path "$home/.kube"
+notepad $home/.kube/mycluster
+```
+Copy and paste config from terminal to the file and then set envrionemnt variable and test connectivity
+```Powershell
+$env:KUBE_CONFIG = "$home/.kube/mycluster"
+kubectl get pod -A
+```
+
 
 
