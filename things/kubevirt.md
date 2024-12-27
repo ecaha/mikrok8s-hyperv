@@ -167,6 +167,33 @@ The hostpath storage does not play well along with kubevirt. Easiest way how to 
 
 ```Powershell
 $storClass = @"
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: data-storageclass
+provisioner: microk8s.io/hostpath
+reclaimPolicy: Retain
+parameters:
+  pvDir: /mnt/data
+volumeBindingMode: WaitForFirstConsumer
+"@
 
+#add storage class
+$storClass | kubectl apply -f -
+
+#make it default
+kubectl patch storageclass microk8s-hostpath -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+kubectl patch storageclass data-storageclass -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
 ```
+## Install kubevirt
+Just standard installation procedure rewritten into Powershell
 
+```Powershell
+$VERSION =  $(Invoke-WebRequest https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt).Content
+echo $VERSION
+kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/kubevirt-operator.yaml"
+kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/kubevirt-cr.yaml"
+
+#By default KubeVirt will deploy 7 pods, 3 services, 1 daemonset, 3 deployment apps, 3 replica sets.
+kubectl get all -n kubevirt
+```
