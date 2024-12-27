@@ -182,8 +182,8 @@ volumeBindingMode: WaitForFirstConsumer
 $storClass | kubectl apply -f -
 
 #make it default
-kubectl patch storageclass microk8s-hostpath -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
-kubectl patch storageclass data-storageclass -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+kubectl patch storageclass microk8s-hostpath -p '{\"metadata\": {\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"false\"}}}'
+kubectl patch storageclass data-storageclass -p '{\"metadata\": {\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"false\"}}}'
 ```
 ## Install kubevirt
 Just standard installation procedure rewritten into Powershell
