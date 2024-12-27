@@ -183,9 +183,17 @@ $storClass | kubectl apply -f -
 
 #make it default
 kubectl patch storageclass microk8s-hostpath -p '{\"metadata\": {\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"false\"}}}'
-kubectl patch storageclass data-storageclass -p '{\"metadata\": {\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"false\"}}}'
+kubectl patch storageclass data-storageclass -p '{\"metadata\": {\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"true\"}}}'
 ```
 ## Install kubevirt
+Kubevirt requires to have a control part deployed on control plane (master nodes). Microk8s does not specify the role explicitly (is inferred by cluster topology). So we must to add the label to the node.
+
+```powershell
+kubectl get node
+kubectl label node uburtx01 node-role.kubernetes.io/master=master
+kubectl get node
+```
+
 Just standard installation procedure rewritten into Powershell
 
 ```Powershell
@@ -197,3 +205,170 @@ kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${VERS
 #By default KubeVirt will deploy 7 pods, 3 services, 1 daemonset, 3 deployment apps, 3 replica sets.
 kubectl get all -n kubevirt
 ```
+
+## Test empheral VM
+We will not touch persistent storage yet. We wnat know, if kubevirt works and is capable of running precreated image. We expect virtctl is called from actual ($pwd) directory.
+
+```Powershell
+kubectl apply -f https://kubevirt.io/labs/manifests/vm.yaml
+
+# Optional - observe the vm
+kubectl get vms
+kubectl get vms -o yaml testvm
+
+#Start the VM
+./virtctl start testvm
+
+#Connect to the VM
+./virtctl console testvm
+
+#Stop and delete VM
+./virtctl start testvm
+kubectl delete vm testvm
+```
+
+## CDI
+Now we need some way how we pass the iso file to the virtual machine. CDI stands for Containerized Data Importer is right tool for it. It will create PVC (persistent volume claim) and allows us to upload file into this persistent volume. More details (here)[https://kubevirt.io/labs/kubernetes/lab2.html].
+
+Install CDI - in powershell
+```PowerShell
+$Results = Invoke-WebRequest -Method Get -Uri  "https://github.com/kubevirt/containerized-data-importer/releases/latest" -MaximumRedirection 0 -ErrorAction SilentlyContinue
+
+$VERSION = [System.IO.Path]::GetFileName($Results.Headers.Location)
+kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$VERSION/cdi-operator.yaml
+kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$VERSION/cdi-cr.yaml
+
+#Check four CDI pods
+kubectl get pods -n cdi
+```
+
+## Upload image
+We are following basically this (article)[https://kubevirt.io/2022/KubeVirt-installing_Microsoft_Windows_11_from_an_iso.html].
+
+To upload the image, we need a way to communicate with the cdi-proxy. The default service uses cluster IP. Easies way is to declare a service which will use nodeport.
+
+```PowerShell
+$service = @"
+apiVersion: v1
+kind: Service
+metadata:
+  name: cdi-uploadproxy-nodeport
+  namespace: cdi
+  labels:
+    cdi.kubevirt.io: "cdi-uploadproxy"
+spec:
+  type: NodePort
+  ports:
+      - port: 443
+        targetPort: 8443
+        nodePort: 32111 # Use unused nodeport in 31,500 to 32,767 range
+        protocol: TCP
+  selector:
+    cdi.kubevirt.io: cdi-uploadproxy
+"@
+
+$service | kubectl apply -f -
+```
+
+We are using the 24H2 version of Windows 11 here. In following article we will discuss options how to inject virtio drivers to custom ISO, remove Press any key requirement etc. Also the option how to prepare a _golden image_ and clone it as VM. But it is for the future for now, simple Next->Next Windows install will be sufficient.
+```Powershell
+./virtctl image-upload pvc win11cd-pvc --size 7Gi --force-bind --image-path=../iso/win11.iso --insecure --uploadproxy-url="https://192.168.174.41:32111"
+```
+
+## Create windows VM and run installation
+We need PVC for windows hardrive nad VM definition. Then we can start the machine and use VNC to access graphics console.
+
+PVC - windows harddisk - change size according your needs
+```Powershell
+$winpvc=@"
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wintest01-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 64Gi
+"@
+
+$winpvc | kubectl apply -f -
+```
+
+VM definition - be aware - it has TPM, but TPM is not persisted, so if you bitlocker your disk, you will need recovery key each time
+```PowerShell
+$wintest01 = @"
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstance
+metadata:
+  labels:
+    special: vmi-windows
+  name: wintest01-vmi
+spec:
+  domain:
+    clock:
+      timer:
+        hpet:
+          present: false
+        hyperv: {}
+        pit:
+          tickPolicy: delay
+        rtc:
+          tickPolicy: catchup
+      utc: {}
+    cpu:
+      cores: 4
+    devices:
+      disks:
+      - disk:
+          bus: sata
+        name: pvcdisk
+      - cdrom:
+          bus: sata
+        name: winiso
+      interfaces:
+      - masquerade: {}
+        model: e1000
+        name: default
+      tpm: {}
+    features:
+      acpi: {}
+      apic: {}
+      hyperv:
+        relaxed: {}
+        spinlocks:
+          spinlocks: 8191
+        vapic: {}
+      smm: {}
+    firmware:
+      bootloader:
+        efi:
+          secureBoot: true
+      uuid: 5d307ca9-b3ef-428c-8861-06e72d69f223
+    resources:
+      requests:
+        memory: 8Gi
+  networks:
+  - name: default
+    pod: {}
+  terminationGracePeriodSeconds: 0
+  volumes:
+  - name: pvcdisk
+    persistentVolumeClaim:
+      claimName:  wintest01-pvc
+  - name: winiso
+    persistentVolumeClaim:
+      claimName: win11cd-pvc
+"@
+
+$wintest01 | kubectl apply -f -
+```
+
+Run and VNC ot the machine
+```Powershell
+./virtctl start wintest01-vmi
+./virtctl vnc wintest01-vmi
+```
+
+
