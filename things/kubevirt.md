@@ -307,60 +307,35 @@ metadata:
   name: wintest01
 spec:
   runStrategy: Halted
-  domain:
-    clock:
-      timer:
-        hpet:
-          present: false
-        hyperv: {}
-        pit:
-          tickPolicy: delay
-        rtc:
-          tickPolicy: catchup
-      utc: {}
-    cpu:
-      cores: 4
-    devices:
-      disks:
-      - disk:
-          bus: sata
-        name: pvcdisk
-      - cdrom:
-          bus: sata
-        name: winiso
-      interfaces:
-      - masquerade: {}
-        model: e1000
-        name: default
-      tpm: {}
-    features:
-      acpi: {}
-      apic: {}
-      hyperv:
-        relaxed: {}
-        spinlocks:
-          spinlocks: 8191
-        vapic: {}
-      smm: {}
-    firmware:
-      bootloader:
-        efi:
-          secureBoot: true
-      uuid: 5d307ca9-b3ef-428c-8861-06e72d69f223
-    resources:
-      requests:
-        memory: 8Gi
-  networks:
-  - name: default
-    pod: {}
-  terminationGracePeriodSeconds: 0
-  volumes:
-  - name: pvcdisk
-    persistentVolumeClaim:
-      claimName:  wintest01-pvc
-  - name: winiso
-    persistentVolumeClaim:
-      claimName: win11cd-pvc
+  template:
+    metadata:
+      labels:
+        kubevirt.io/domain: wintest01
+    spec:
+      domain:
+        cpu:
+          cores: 4
+        devices:
+          disks:
+          - bootOrder: 1
+            cdrom:
+              bus: sata
+            name: winiso
+          - disk:
+              bus: sata
+            name: pvcdisk
+        machine:
+          type: q35
+        resources:
+          requests:
+            memory: 8G
+      volumes:
+      - name: pvcdisk
+        persistentVolumeClaim:
+          claimName:  wintest01-pvc
+      - name: winiso
+        persistentVolumeClaim:
+          claimName: win11cd-pvc
 "@
 
 $wintest01 | kubectl apply -f -
