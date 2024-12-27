@@ -189,7 +189,7 @@ kubectl patch storageclass data-storageclass -p '{\"metadata\": {\"annotations\"
 Just standard installation procedure rewritten into Powershell
 
 ```Powershell
-$VERSION =  $(Invoke-WebRequest https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt).Content
+$VERSION =  $(Invoke-WebRequest https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt).Content.Trim()
 echo $VERSION
 kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/kubevirt-operator.yaml"
 kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/kubevirt-cr.yaml"
