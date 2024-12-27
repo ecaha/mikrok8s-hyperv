@@ -312,10 +312,52 @@ spec:
       labels:
         kubevirt.io/domain: wintest01
     spec:
+      architecture: amd64
       domain:
+        clock:
+          utc: {}
+          timer:
+            hpet:
+              present: false
+            pit:
+              tickPolicy: delay
+            rtc:
+              tickPolicy: catchup
+            hyperv: {}
+        features:
+          acpi: {}
+          apic: {}
+          smm: {}
+          hyperv:
+            relaxed: {}
+            vapic: {}
+            vpindex: {}
+            spinlocks:
+              spinlocks: 8191
+            synic: {}
+            synictimer:
+              direct: {}
+            tlbflush: {}
+            frequencies: {}
+            reenlightenment: {}
+            ipi: {}
+            runtime: {}
+            reset: {}
+        firmware:
+          bootloader:
+            efi:
+              secureBoot: true
+#              persistent: true
+          uuid: 5d307ca9-b3ef-428c-8861-06e72d69f223
         cpu:
           cores: 4
         devices:
+          tpm: {}
+ #           persistent: true
+          interfaces:
+          - masquerade: {}
+            model: e1000
+            name: default
           disks:
           - bootOrder: 1
             cdrom:
@@ -324,11 +366,12 @@ spec:
           - disk:
               bus: sata
             name: pvcdisk
-        machine:
-          type: q35
         resources:
           requests:
             memory: 8G
+      networks:
+      - name: default
+        pod: {}
       volumes:
       - name: pvcdisk
         persistentVolumeClaim:
