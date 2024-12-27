@@ -303,7 +303,7 @@ apiVersion: kubevirt.io/v1
 kind: VirtualMachineInstance
 metadata:
   labels:
-    special: vmi-windows
+    special: wintest01-vmi
   name: wintest01-vmi
 spec:
   domain:
