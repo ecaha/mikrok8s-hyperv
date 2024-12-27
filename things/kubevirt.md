@@ -300,12 +300,13 @@ VM definition - be aware - it has TPM, but TPM is not persisted, so if you bitlo
 ```PowerShell
 $wintest01 = @"
 apiVersion: kubevirt.io/v1
-kind: VirtualMachineInstance
+kind: VirtualMachine
 metadata:
   labels:
-    special: wintest01-vmi
-  name: wintest01-vmi
+    special: wintest01
+  name: wintest01
 spec:
+  runStrategy: Halted
   domain:
     clock:
       timer:
@@ -370,5 +371,8 @@ Run and VNC ot the machine
 ./virtctl start wintest01-vmi
 ./virtctl vnc wintest01-vmi
 ```
-
+If it is not working add RealVNC to your path
+```Powershell
+$env:PATH = $env:PATH + ";C:\\Program Files\\RealVNC\\VNC Viewer"
+```
 
