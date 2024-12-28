@@ -1,17 +1,15 @@
 # Kubevirt on microk8s on Ubuntu 22.04
 
 The goal is to install 24H2 edition of Windows 11 as kubevirt pod. We will not optimize the solution for performance, it's PoC only.
-There are some obstacles in the way to setup kubevirt on microk8s. Main two are - the microk8s snap location (kubelet directory) - is different from standard one and kubevirt is not playing nicely. The use of microk8s hostpath storage calss has some specifics as well.
+There are some obstacles in the way to setup kubevirt on microk8s. Main two are - the microk8s snap location (kubelet directory) - is different from standard one and kubevirt is not playing nicely along. And the use of microk8s hostpath storage calss has some specifics as well.
 
-LAB platform
+### LAB platform
 * Supermicro X11SCA-F board
 * i7-8700 CPU
 * 128 GB RAM
 * 256GB Nvme for OS
 * 4* 1TB SATA SSD for data
 * Only 1 NIC (combined with BMC) is used in this setup
-
-Let's start.
 
 As an operator station I am using windows 11. We need couple of tools.
 
@@ -43,9 +41,9 @@ When we are armed by tools we can setup the microk8s node. I will provide detail
 12. Create and run machine
 
 ## Install Ubuntu 22.04
-Nothing special here, I am using netboot.xyz and iKVM on BMC to do that. Everything is set to defalut, nvme partitioned by default. For PoC OpenSSH server is installed and password authentication enabled. Single NIC is DHCPv4 enabled, we will configure the bridge later. When the installation is done, restert server and SSH to it. 
+Nothing special here, I am using netboot.xyz and iKVM on BMC to do that. Everything is set to defalut, nvme partitioned by default. For PoC OpenSSH server is installed and password authentication enabled. Single NIC is DHCPv4 enabled, we will configure the bridge later. When the installation is done, restart server and SSH to it. 
 
-Four SATA drives are in separate VG and stripped LV is created.
+Four SATA drives are in separate volumegroup (VG). Stripped logical volume (LV) is created.
 ```bash
 # SSH to server
 
@@ -71,7 +69,7 @@ Create new lvm for data
 # LVM
 sudo pvcreate /dev/sda /dev/sdb /dev/sdc /dev/sdd
 sudo vgcreate data-vg0 /dev/sda /dev/sdb /dev/sdc /dev/sdd
-sudo lvcreate -l 100%FREE -n data-lv0 data-vg0
+sudo lvcreate -i 4 -l 100%FREE -n data-lv0 data-vg0
 
 # mkfs
 sudo mkfs.ext4 /dev/data-vg0/data-lv0
@@ -84,7 +82,7 @@ sudo mount /mnt/data
 
 ## Netwroking setup
 Ubuntu is using netplan to configure networking. Easiest way how to change direct connection to bridge is just add another file into _/etc/netplan/_ directory.
-Before that we need to know the connected DHCPv4 provided interface we will use in the bridge scenario. Also the static address for our bridge interface is needed.
+Before that we need to know the name of the interface. We can check which interface got an IP address from DHCP server. The name of the interface is required for bridge definition. Also the static address for our bridge interface is needed.
 
 ```bash
 # check the interface name
@@ -99,22 +97,22 @@ network:
   bridges:
     br0:
       addresses:
-        - 192.168.174.41/24
+        - 192.168.174.41/24 #The IP address for the node
       gateway4: 192.168.174.1
       nameservers:
         addresses: [192.168.174.1, 8.8.8.8]
       interfaces:
-        - eno2     
+        - eno2     # iface name
 EOF'
 
 sudo chmod 600 /etc/netplan/60-bridge.yaml
 
 sudo netplan apply
 ```
-Restablish connection to chosen IP address
+Restablish connection to chosen IP address through SSH.
 
 ## Install microk8s
-Straithforward procedure nothing special here. Execute in SSH session on the server.
+Straithforward procedure nothing special here for the installation. After microk8s are installed we create _mount -o bind_ type junction, instead of symlink. Kubevirt is not working well with a symlink. Execute following in SSH session on the server.
 
 ```bash
 sudo snap install microk8s --classic
@@ -136,6 +134,12 @@ sudo microk8s start
 ```
 
 ## Enable Addons
+We enable couple of addons
+* community - for access to multus
+* multus - network for VMs, we discuss it in detail in some following post
+* hostpath-storage - access to local drives for pods
+* metrics-server - used by Headlamp to monitor the environment
+  
 Execute on remote SSH session.
 ```bash
 sudo microk8s enable community
@@ -145,7 +149,9 @@ sudo microk8s enable metrics-server
 ```
 
 ## Set environment
-We need to prepare our kubernetes management environment. So we get kubeconfig from the server and we will store it locally.
+
+We need to prepare our kubernetes management environment on local Windows 11 machine. We get kubeconfig from the server and we will store it locally. Also we set KUBECONFIG environment variable to point towards cluster.
+
 On the remote host execute
 ```bash
 sudo microk8s config
@@ -160,10 +166,11 @@ Copy and paste config from terminal to the file and then set envrionemnt variabl
 $env:KUBECONFIG = "$home/.kube/mycluster"
 kubectl get pod -A
 ```
-If it works, you can impor kubeconfig into Headlamps for easy cluster observation.
+If it works, you can import kubeconfig into Headlamps for easy cluster observation.
 
 ## Custom default storage class
-The hostpath storage does not play well along with kubevirt. Easiest way how to overcome the issues is to create custom storage class and make it  default. \we will use /mnt/data location for that.
+
+The hostpath storage does not play well along with kubevirt. Easiest way how to overcome the issues is to create custom storage class and make it default. We will use /mnt/data (our SSD LVM stripe) location for that.
 
 ```Powershell
 $storClass = @"
@@ -190,11 +197,12 @@ Kubevirt requires to have a control part deployed on control plane (master nodes
 
 ```powershell
 kubectl get node
+# uburtx01 is name of the node use the right one here
 kubectl label node uburtx01 node-role.kubernetes.io/master=master
 kubectl get node
 ```
 
-Just standard installation procedure rewritten into Powershell
+Just standard installation procedure from (kubevirt.io)[https://kubevirt.io/quickstart_kind/] rewritten into Powershell
 
 ```Powershell
 $VERSION =  $(Invoke-WebRequest https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt).Content.Trim()
@@ -207,7 +215,8 @@ kubectl get all -n kubevirt
 ```
 
 ## Test empheral VM
-We will not touch persistent storage yet. We wnat know, if kubevirt works and is capable of running precreated image. We expect virtctl is called from actual ($pwd) directory.
+
+We will not touch persistent storage yet. We want know, if kubevirt works and is capable of running precreated image. We expect virtctl is called from actual ($pwd) directory in following code snippets.
 
 ```Powershell
 kubectl apply -f https://kubevirt.io/labs/manifests/vm.yaml
@@ -223,12 +232,13 @@ kubectl get vms -o yaml testvm
 ./virtctl console testvm
 
 #Stop and delete VM
-./virtctl start testvm
+./virtctl stop testvm
 kubectl delete vm testvm
 ```
 
 ## CDI
-Now we need some way how we pass the iso file to the virtual machine. CDI stands for Containerized Data Importer is right tool for it. It will create PVC (persistent volume claim) and allows us to upload file into this persistent volume. More details (here)[https://kubevirt.io/labs/kubernetes/lab2.html].
+
+Now we need some way how we pass the iso file to the virtual machine. CDI - Containerized Data Importer is the right tool for it. It will create PVC (persistent volume claim) and allows us to upload file into this persistent volume. More details (here)[https://kubevirt.io/labs/kubernetes/lab2.html].
 
 Install CDI - in powershell
 ```PowerShell
@@ -245,7 +255,7 @@ kubectl get pods -n cdi
 ## Upload image
 We are following basically this (article)[https://kubevirt.io/2022/KubeVirt-installing_Microsoft_Windows_11_from_an_iso.html].
 
-To upload the image, we need a way to communicate with the cdi-proxy. The default service uses cluster IP. Easies way is to declare a service which will use nodeport.
+To upload the image, we need a way to communicate with the cdi-proxy pod. The default service uses cluster IP therefore is not accesible by default from outside. Easiest approach is to declare an additional service which will use nodeport.
 
 ```PowerShell
 $service = @"
@@ -270,13 +280,14 @@ spec:
 $service | kubectl apply -f -
 ```
 
-We are using the 24H2 version of Windows 11 here. In following article we will discuss options how to inject virtio drivers to custom ISO, remove Press any key requirement etc. Also the option how to prepare a _golden image_ and clone it as VM. But it is for the future for now, simple Next->Next Windows install will be sufficient.
+We are using the 24H2 version of Windows 11 here. In following article we will discuss options how to inject virtio drivers to custom ISO, remove Press any key requirement etc. Also the option how to prepare a _golden image_ and clone it as VM. But it is for the future for now, simple Next->Next Windows install will be sufficient. So we upload vanilla Windows 11 ISO. You can use probably some trial, I am using one comming from my Visual Studio subscribtion.
+
 ```Powershell
 ./virtctl image-upload pvc win11cd-pvc --size 7Gi --force-bind --image-path=../iso/win11.iso --insecure --uploadproxy-url="https://192.168.174.41:32111"
 ```
 
 ## Create windows VM and run installation
-We need PVC for windows hardrive nad VM definition. Then we can start the machine and use VNC to access graphics console.
+We need PVC for windows hardrive nad VM definition. Then we can start the machine and use VNC to access graphics console. You must distinguish between two diffrent kinds kubevirt introduces - VirtualMachine and VirtualMachineInstance. VM has a state and we usally use virtctl to control the VM. It has therefore slightly different lifecycle than regulare pod. VMI lifecycle is much more close to the pod and you use kubectl to work with it. If you dig deeper in some examples always check kind in yaml files.
 
 PVC - windows harddisk - change size according your needs
 ```Powershell
@@ -296,7 +307,8 @@ spec:
 $winpvc | kubectl apply -f -
 ```
 
-VM definition - be aware - it has TPM, but TPM is not persisted, so if you bitlocker your disk, you will need recovery key each time
+VM definition - be aware - it has TPM, but TPM is not persisted, so if you bitlocker your disk, you will need recovery key each time. You can enable persistent TPM in feature toggle for the kubevirt. Its just vTPM file based not backed by any real hardware TPM.
+
 ```PowerShell
 $wintest01 = @"
 apiVersion: kubevirt.io/v1
