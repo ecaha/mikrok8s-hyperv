@@ -98,7 +98,9 @@ network:
     br0:
       addresses:
         - 192.168.174.41/24 #The IP address for the node
-      gateway4: 192.168.174.1
+      routes:
+        - to: default
+          via: 192.168.174.1
       nameservers:
         addresses: [192.168.174.1, 8.8.8.8]
       interfaces:
@@ -108,11 +110,19 @@ EOF'
 sudo chmod 600 /etc/netplan/60-bridge.yaml
 
 sudo netplan apply
+
+# will result in a bugged warning `Cannot call Open vSwitch: ovsdb-server.service is not running.`
+# which can be solved by installing the following package, however, it is safe to ignore
+# https://bugs.launchpad.net/ubuntu/+source/netplan.io/+bug/2041727
+
+#sudo apt get upgade
+#sudo apt install openvswitch-switch-dpdk
+#sudo netplan apply
 ```
-Restablish connection to chosen IP address through SSH.
+Reestablish connection to the chosen IP address through SSH.
 
 ## Install microk8s
-Straithforward procedure nothing special here for the installation. After microk8s are installed we create _mount -o bind_ type junction, instead of symlink. Kubevirt is not working well with a symlink. Execute following in SSH session on the server.
+Straight forward procedure, nothing special here about the installation. After microk8s are installed we create _mount -o bind_ type junction, instead of symlink. Kubevirt is not working well with a symlink. Execute following in SSH session on the server.
 
 ```bash
 sudo snap install microk8s --classic
@@ -150,23 +160,25 @@ sudo microk8s enable metrics-server
 
 ## Set environment
 
-We need to prepare our kubernetes management environment on local Windows 11 machine. We get kubeconfig from the server and we will store it locally. Also we set KUBECONFIG environment variable to point towards cluster.
+We need to prepare our kubernetes management environment on a local Windows 11 machine by firstly acquiring the kubernetes config file from the server and then storing it locally. Then we will set a KUBECONFIG environment variable to point towards the cluster.
 
-On the remote host execute
+On the remote host, print out the config file to the terminal
 ```bash
 sudo microk8s config
 ```
-On local widnows machine execute in PowerShell, preferably >7
+On the local Windows machine, create a directory for the config file by executing the following inside PowerShell, preferably >7
 ```Powershell
 New-Item -ItemType Directory -Force -Path "$home/.kube"
-notepad $home/.kube/mycluster
+notepad $home/.kube/mycluster.yaml
 ```
-Copy and paste config from terminal to the file and then set envrionemnt variable and test connectivity
+Copy and paste config from the remote host terminal to the new yaml file.
+
+Then set the environment variable and test connectivity.
 ```Powershell
-$env:KUBECONFIG = "$home/.kube/mycluster"
+$env:KUBECONFIG = "$home/.kube/mycluster.yaml"
 kubectl get pod -A
 ```
-If it works, you can import kubeconfig into Headlamps for easy cluster observation.
+If it works, you can import kubeconfig into Headlamps for an easy cluster observation.
 
 ## Custom default storage class
 
@@ -193,16 +205,16 @@ kubectl patch storageclass microk8s-hostpath -p '{\"metadata\": {\"annotations\"
 kubectl patch storageclass data-storageclass -p '{\"metadata\": {\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"true\"}}}'
 ```
 ## Install kubevirt
-Kubevirt requires to have a control part deployed on control plane (master nodes). Microk8s does not specify the role explicitly (is inferred by cluster topology). So we must to add the label to the node.
+Kubevirt requires having a control part deployed on the control plane (master nodes). Microk8s does not specify the role explicitly (is inferred by cluster topology). So we must to add the label to the node.
 
 ```powershell
 kubectl get node
 # uburtx01 is name of the node use the right one here
-kubectl label node uburtx01 node-role.kubernetes.io/master=master
+kubectl label node mynode node-role.kubernetes.io/master=master
 kubectl get node
 ```
 
-Just standard installation procedure from (kubevirt.io)[https://kubevirt.io/quickstart_kind/] rewritten into Powershell
+Just the standard installation procedure from [kubevirt.io](https://kubevirt.io/quickstart_kind/) rewritten into Powershell
 
 ```Powershell
 $VERSION =  $(Invoke-WebRequest https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt).Content.Trim()
@@ -216,7 +228,7 @@ kubectl get all -n kubevirt
 
 ## Test empheral VM
 
-We will not touch persistent storage yet. We want know, if kubevirt works and is capable of running precreated image. We expect virtctl is called from actual ($pwd) directory in following code snippets.
+We will not touch the persistent storage yet. We want know if kubevirt works and if it is capable of running precreated image. We expect virtctl is called from the actual ($pwd) directory it is located in.
 
 ```Powershell
 kubectl apply -f https://kubevirt.io/labs/manifests/vm.yaml
@@ -238,7 +250,7 @@ kubectl delete vm testvm
 
 ## CDI
 
-Now we need some way how we pass the iso file to the virtual machine. CDI - Containerized Data Importer is the right tool for it. It will create PVC (persistent volume claim) and allows us to upload file into this persistent volume. More details (here)[https://kubevirt.io/labs/kubernetes/lab2.html].
+Now we need a way to pass the iso file to the virtual machine. CDI - Containerized Data Importer is the right tool for that. It will create a PVC (persistent volume claim) and will allow us to upload files into this persistent volume. More details [here](https://kubevirt.io/labs/kubernetes/lab2.html).
 
 Install CDI - in powershell
 ```PowerShell
@@ -253,9 +265,9 @@ kubectl get pods -n cdi
 ```
 
 ## Upload image
-We are following basically this (article)[https://kubevirt.io/2022/KubeVirt-installing_Microsoft_Windows_11_from_an_iso.html].
+Basically, we are following this [article](https://kubevirt.io/2022/KubeVirt-installing_Microsoft_Windows_11_from_an_iso.html).
 
-To upload the image, we need a way to communicate with the cdi-proxy pod. The default service uses cluster IP therefore is not accesible by default from outside. Easiest approach is to declare an additional service which will use nodeport.
+To upload the image, we need a way to communicate with the cdi-proxy pod. The default service uses cluster IP and therefore is not accessible by default from outside. Easiest approach is to declare an additional service which will use a nodeport.
 
 ```PowerShell
 $service = @"
@@ -280,16 +292,16 @@ spec:
 $service | kubectl apply -f -
 ```
 
-We are using the 24H2 version of Windows 11 here. In following article we will discuss options how to inject virtio drivers to custom ISO, remove Press any key requirement etc. Also the option how to prepare a _golden image_ and clone it as VM. But it is for the future for now, simple Next->Next Windows install will be sufficient. So we upload vanilla Windows 11 ISO. You can use probably some trial, I am using one comming from my Visual Studio subscribtion.
+We are using the 24H2 version of Windows 11 here. In an upcoming article we will discuss options such as injecting virtio drivers into a custom ISO, removing the "Press any key requirement" etc. As well as the option to prepare a _golden image_ and clone it as a VM. For now, a simple "Next->Next..." Windows install will be sufficient enough. To do that, we need to upload a Windows 11 ISO from our local machine. You can use a trial version but I will be using a key from my Visual Studio subscribtion.
 
 ```Powershell
-./virtctl image-upload pvc win11cd-pvc --size 7Gi --force-bind --image-path=../iso/win11.iso --insecure --uploadproxy-url="https://192.168.174.41:32111"
+./virtctl image-upload pvc win11cd-pvc --size 7Gi --force-bind --image-path=..path/to/win11.iso --insecure --uploadproxy-url="https://192.168.174.41:32111"
 ```
 
 ## Create windows VM and run installation
-We need PVC for windows hardrive nad VM definition. Then we can start the machine and use VNC to access graphics console. You must distinguish between two diffrent kinds kubevirt introduces - VirtualMachine and VirtualMachineInstance. VM has a state and we usally use virtctl to control the VM. It has therefore slightly different lifecycle than regulare pod. VMI lifecycle is much more close to the pod and you use kubectl to work with it. If you dig deeper in some examples always check kind in yaml files.
+We need a PVC for the windows hardrive and VM definition. Then we can start the machine and use VNC to access graphics console. You must distinguish between the two different kinds of resources kubevirt introduces - VirtualMachine and VirtualMachineInstance. VM has a state and we usally use virtctl to control it and therefore has a slightly different lifecycle than regulare pod. VMI lifecycle is much closer to the pod and you use kubectl to work with it. If you dig deeper in some examples, always check the kind in yaml files.
 
-PVC - windows harddisk - change size according your needs
+PVC => windows harddisk - change size according to your needs
 ```Powershell
 $winpvc=@"
 apiVersion: v1
@@ -307,7 +319,7 @@ spec:
 $winpvc | kubectl apply -f -
 ```
 
-VM definition - be aware - it has TPM, but TPM is not persisted, so if you bitlocker your disk, you will need recovery key each time. You can enable persistent TPM in feature toggle for the kubevirt. Its just vTPM file based not backed by any real hardware TPM.
+VM definition - be aware - it has TPM, but TPM is not persisted, so if you bitlocker your disk, you will need a recovery key each time. You can enable persistent TPM in feature toggle for kubevirt. Its just vTPM file based not backed by any real hardware TPM.
 
 ```PowerShell
 $wintest01 = @"
@@ -396,10 +408,10 @@ spec:
 $wintest01 | kubectl apply -f -
 ```
 
-Run and VNC ot the machine
+Run and VNC to the machine
 ```Powershell
-./virtctl start wintest01-vmi
-./virtctl vnc wintest01-vmi
+./virtctl start wintest01
+./virtctl vnc wintest01
 ```
 If it is not working add RealVNC to your path
 ```Powershell
